@@ -96,3 +96,30 @@ for fold, (train_index, val_index) in enumerate(tqdm(Kfold.split(x_train), desc=
 
 print(f"Average F1-score:{np.mean(f1_scores)}")
 print(f"Average Accuracy:{np.mean(accuracies)}")
+
+from sklearn.svm import SVC
+
+# 創建SVM分類器
+svm = SVC(kernel='linear', random_state=42)
+
+Kfold = KFold(n_splits=5, shuffle=True, random_state=42)
+f1_scores = []
+accuracies = []
+
+for fold, (train_index, val_index) in enumerate(tqdm(Kfold.split(x_train), desc='Cross-validation', total=Kfold.n_splits)):
+    x_fold_train, x_fold_val = x_train[train_index], x_train[val_index]
+    y_fold_train, y_fold_val = y_train[train_index], y_train[val_index]
+
+    # 將整個訓練集載入模型
+    svm.fit(x_fold_train, y_fold_train)
+
+    y_pred = svm.predict(x_fold_val)
+
+    f1 = f1_score(y_fold_val, y_pred, average='macro')
+    acc = accuracy_score(y_fold_val, y_pred)
+
+    f1_scores.append(f1)
+    accuracies.append(acc)
+
+print(f"Average F1-score:{np.mean(f1_scores)}")
+print(f"Average Accuracy:{np.mean(accuracies)}")
