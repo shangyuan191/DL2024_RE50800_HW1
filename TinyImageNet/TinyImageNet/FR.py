@@ -3,16 +3,26 @@
 
 
 import os
+from tqdm import tqdm
 dd=os.listdir('TIN')
 f1 = open('train.txt', 'w')
 f2 = open('test.txt', 'w')
-for i in range(len(dd)):
-    d2 = os.listdir ('TIN/%s/images/'%(dd[i]))
-    for j in range(len(d2)-2):
-        str1='TIN/%s/images/%s'%(dd[i], d2[j])
-        f1.write("%s %d\n" % (str1, i))
-    str1='TIN/%s/images/%s'%(dd[i], d2[-1])
-    f2.write("%s %d\n" % (str1, i))
+
+
+# 使用 tqdm 函式包裝迭代對象
+test_ratio=0.2
+for i in tqdm(range(len(dd)), desc='Processing folders', leave=True):  #len(dd)=200 (num of folder)
+    d2 = os.listdir(f"TIN/{dd[i]}/images/")          # len(d2)=500 (num of image per folder)
+    train_num=round(len(d2)*(1-test_ratio))
+    test_num=round(len(d2)*test_ratio)
+    for j in tqdm(range(train_num), desc=f'Processing images in folder {i}', leave=False):
+        str1 = f"TIN/{dd[i]}/images/{d2[j]}"
+        f1.write(f"{str1} {i}\n")
+    for j in tqdm(range(train_num,len(d2)), desc=f'Processing images in folder {i}', leave=False):
+        str1 = f"TIN/{dd[i]}/images/{d2[j]}"
+        f2.write(f"{str1} {i}\n")
+
+
 
 f1.close()
 f2.close()
@@ -26,15 +36,14 @@ import cv2
 def load_img(f):
     f=open(f)
     lines=f.readlines()
-    imgs, lab=[], []
-    for i in range(len(lines)):
+    imgs, labels=[], []
+    for i in tqdm(range(len(lines)), desc='Loading images', leave=True):
         fn, label = lines[i].split(' ')
-        print(fn)
+        #print(fn)
         
         im1=cv2.imread(fn)
-        im1=cv2.resize(im1, (256,256))
-        im1 = cv2.cvtColor(im1, cv2.COLOR_BGR2GRAY)
-        
+        im1=cv2.resize(im1, (256,256))   ## convert (64,64,3) to (256,256,3)
+        im1 = cv2.cvtColor(im1, cv2.COLOR_BGR2GRAY) ## convert (256,256,3) to (256,256)        
         '''===============================
         影像處理的技巧可以放這邊，來增強影像的品質
         
@@ -42,16 +51,17 @@ def load_img(f):
         
         vec = np.reshape(im1, [-1])
         imgs.append(vec) 
-        lab.append(int(label))
-        
-    imgs= np.asarray(imgs, np.float32)
-    lab= np.asarray(lab, np.int32)
-    return imgs, lab 
+        labels.append(int(label))
 
 
-x, y = load_img('train.txt')
-tx, ty = load_img('test.txt')
-print(x,y,tx,ty)
+    imgs= np.asarray(imgs,np.float32)
+    labels= np.asarray(labels, np.int32)
+    return imgs, labels 
+
+
+x_train, y_train = load_img('train.txt')
+x_test, y_test = load_img('test.txt')
+print(x_train,y_train,x_test,y_test)
 
 
 
@@ -59,5 +69,30 @@ print(x,y,tx,ty)
 #X就是資料，Y是Label，請設計不同分類器來得到最高效能
 #必須要計算出分類的正確率
 #======================================
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.model_selection import KFold
+from sklearn.metrics import f1_score,accuracy_score
 
+knn = KNeighborsClassifier(n_neighbors=5)
 
+Kfold = KFold(n_splits=5, shuffle=True, random_state=42)
+f1_scores = []
+accuracies = []
+
+for fold, (train_index, val_index) in enumerate(tqdm(Kfold.split(x_train), desc='Cross-validation', total=Kfold.n_splits)):
+    x_fold_train, x_fold_val = x_train[train_index], x_train[val_index]
+    y_fold_train, y_fold_val = y_train[train_index], y_train[val_index]
+
+    # 將整個訓練集載入模型
+    knn.fit(x_fold_train, y_fold_train)
+
+    y_pred = knn.predict(x_fold_val)
+
+    f1 = f1_score(y_fold_val, y_pred, average='macro')
+    acc = accuracy_score(y_fold_val, y_pred)
+
+    f1_scores.append(f1)
+    accuracies.append(acc)
+
+print(f"Average F1-score:{np.mean(f1_scores)}")
+print(f"Average Accuracy:{np.mean(accuracies)}")
